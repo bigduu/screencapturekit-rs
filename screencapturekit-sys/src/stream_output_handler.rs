@@ -3,6 +3,7 @@ use std::{
     sync::{Once, RwLock},
 };
 
+use crate::cm_sample_buffer_ref::CMSampleBufferRef;
 use objc::{
     class,
     declare::ClassDecl,
@@ -12,8 +13,6 @@ use objc::{
 use objc_foundation::INSObject;
 use objc_id::Id;
 use once_cell::sync::Lazy;
-
-use crate::cm_sample_buffer_ref::CMSampleBufferRef;
 
 static OUTPUT_HANDLERS: Lazy<RwLock<HashMap<usize, Box<dyn UnsafeSCStreamOutput + Send + Sync>>>> =
     Lazy::new(|| RwLock::new(HashMap::new()));
@@ -43,11 +42,11 @@ impl INSObject for UnsafeSCStreamOutputHandler {
                 sample_ref: *mut Object,
                 of_type: u8,
             ) {
-                if sample_ref.is_null() {
-                    return;
-                }
                 unsafe {
-                    let sample: Id<CMSampleBufferRef> = Id::from_ptr(sample_ref as *mut _ as *mut CMSampleBufferRef);
+                    if sample_ref.is_null() {
+                        return;
+                    }
+                    let sample: Id<CMSampleBufferRef> = Id::from_ptr(sample_ref.cast());
                     let handler_trait_ptr_address = this.get_ivar::<usize>("_output_handler");
                     let lookup = OUTPUT_HANDLERS.read().unwrap();
                     let output_handler_trait = lookup.get(handler_trait_ptr_address).unwrap();
@@ -55,7 +54,7 @@ impl INSObject for UnsafeSCStreamOutputHandler {
                 };
             }
             unsafe {
-                let stream_output_method: extern "C" fn(
+                let stream_output_method: for<'a> extern "C" fn(
                     &mut Object,
                     Sel,
                     *mut Object,
@@ -113,10 +112,10 @@ mod tests {
         let handle = TestHandler {};
         let handle = UnsafeSCStreamOutputHandler::init(handle);
         let _: () = unsafe {
-            msg_send![handle, stream: ptr::null_mut() as *mut Object didOutputSampleBuffer: ptr::null_mut() as *mut Object ofType: 0]
+            msg_send![handle, stream: ptr::null_mut::<Object>() didOutputSampleBuffer: ptr::null_mut::<Object>() ofType: 0]
         };
         let _: () = unsafe {
-            msg_send![handle, stream: ptr::null_mut() as *mut Object didOutputSampleBuffer: ptr::null_mut() as *mut Object ofType: 1]
+            msg_send![handle, stream: ptr::null_mut::<Object>() didOutputSampleBuffer: ptr::null_mut::<Object>() ofType: 1]
         };
     }
 }
